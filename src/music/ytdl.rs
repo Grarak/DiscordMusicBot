@@ -2,7 +2,7 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 
 pub fn get_title(uri: &str) -> Result<String, ()> {
-    let ytdl_args = ["-e", uri];
+    let ytdl_args = ["-e", "--no-playlist", uri];
 
     let youtube_dl = Command::new("youtube-dl")
         .args(&ytdl_args)
