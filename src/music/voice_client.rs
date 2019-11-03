@@ -141,7 +141,7 @@ pub fn unregister_module(data: Arc<RwLock<ShareMap>>) {
 }
 
 #[command]
-pub fn summon(ctx: &mut Context, msg: &Message, mut args: Args) -> CommandResult {
+pub fn summon(ctx: &mut Context, msg: &Message, args: Args) -> CommandResult {
     let guild = match msg.guild(&ctx.cache) {
         Some(guild) => guild,
         None => return Ok(()),
@@ -149,8 +149,8 @@ pub fn summon(ctx: &mut Context, msg: &Message, mut args: Args) -> CommandResult
 
     let guild_id = guild.read().id;
 
-    let channel_id: ChannelId = match args.single::<String>() {
-        Ok(channel_name) => {
+    let channel_id: ChannelId = match args.remains() {
+        Some(channel_name) => {
             let channels = &guild.read().channels;
             let matching_channels: Vec<&Arc<RwLock<GuildChannel>>> = channels
                 .values()
@@ -169,7 +169,7 @@ pub fn summon(ctx: &mut Context, msg: &Message, mut args: Args) -> CommandResult
                 }
             }
         }
-        Err(_) => match guild
+        None => match guild
             .read()
             .voice_states
             .get(&msg.author.id)
@@ -203,7 +203,7 @@ pub fn summon(ctx: &mut Context, msg: &Message, mut args: Args) -> CommandResult
         Some(_) => {
             let _ = msg.channel_id.say(
                 &ctx.http,
-                &format!("Joined {}", channel_id.name(&ctx.cache).unwrap()),
+                &format!("```Joined {}```", channel_id.name(&ctx.cache).unwrap()),
             );
             let mut properties = voice_manager_locked.properties.lock();
             properties
@@ -416,7 +416,7 @@ fn play_music(
     if let Some((title, url, channel_id)) = playlist.poll() {
         match voice::ytdl(&url) {
             Ok(source) => {
-                println!("Start playing {} {}", title, url);
+                println!("{}: Start playing {} {}", handler.guild_id, title, url);
                 let audio = handler.play_only(source);
                 return Ok((audio, title, channel_id));
             }
