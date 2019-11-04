@@ -30,7 +30,7 @@ use std::time::Duration;
 
 struct VoiceManagerProperties {
     playlist: playlist::Playlist,
-    current_audio: Option<LockedAudio>,
+    current_audio: Option<(String, LockedAudio)>,
 }
 
 impl VoiceManagerProperties {
@@ -81,7 +81,7 @@ pub fn register_module(client: &mut Client, standard_framework: &mut StandardFra
             let mut properties = properties_map_clone.lock();
             for (guild_id, property) in &mut *properties {
                 let is_playing = match property.current_audio.as_ref() {
-                    Some(audio) => !audio.lock().finished,
+                    Some((_, audio)) => !audio.lock().finished,
                     None => false,
                 };
 
@@ -94,11 +94,11 @@ pub fn register_module(client: &mut Client, standard_framework: &mut StandardFra
                     if let Some(handler) = client_voice_manager_locked.get_mut(guild_id) {
                         match play_music(handler, &mut property.playlist) {
                             Ok((locked_audio, title, channel_id)) => {
-                                property.current_audio = Some(locked_audio);
+                                property.current_audio = Some((title.clone(), locked_audio));
                                 if let Some(id) = channel_id {
                                     let _ = id.say(
                                         cache_and_http.http.clone(),
-                                        format!("```Playing {}```", title),
+                                        format!("```Playing \"{}\"```", title),
                                     );
                                 }
                             }
@@ -176,7 +176,12 @@ pub fn summon(ctx: &mut Context, msg: &Message, args: Args) -> CommandResult {
             .and_then(|voice_state| voice_state.channel_id)
         {
             Some(channel_id) => channel_id,
-            None => return Ok(()),
+            None => {
+                let _ = msg
+                    .channel_id
+                    .say(&ctx.http, "```You are not in a voice channel```");
+                return Ok(());
+            }
         },
     };
 
@@ -234,13 +239,22 @@ pub fn leave(ctx: &mut Context, msg: &Message) -> CommandResult {
         .expect("Expected VoiceManager in ShareMap.")
         .lock();
     let mut manager = manager_lock.voice_manager.lock();
-    let has_handler = manager.get(guild_id).is_some();
 
-    if has_handler {
-        manager.leave(guild_id);
-        msg.channel_id.say(&ctx.http, "```Left voice channel```")?;
-    } else {
-        msg.channel_id.say(&ctx, "```Not in a voice channel```")?;
+    match manager.get(guild_id) {
+        Some(handler) => {
+            if let Some(channel_id) = handler.channel_id {
+                let _ = msg.channel_id.say(
+                    &ctx.http,
+                    format!("```Left {}```", channel_id.name(&ctx.cache).unwrap()),
+                );
+            } else {
+                let _ = msg.channel_id.say(&ctx.http, "```Left voice channel```");
+            }
+            manager.leave(guild_id);
+        }
+        None => {
+            let _ = msg.channel_id.say(&ctx, "```Not in a voice channel```");
+        }
     }
 
     Ok(())
@@ -320,15 +334,20 @@ pub fn play(ctx: &mut Context, msg: &Message, mut args: Args) -> CommandResult {
     let property = properties
         .entry(guild_id)
         .or_insert_with(|| VoiceManagerProperties::new(&mut config_loader.lock()));
-    if property
+    match property
         .playlist
         .push(url.to_string(), Some(msg.channel_id))
-        .is_err()
     {
-        let _ = msg
-            .channel_id
-            .say(&ctx.http, format!("```Couldn't play {}```", url));
-        return Ok(());
+        Ok(title) => {
+            let _ = msg
+                .channel_id
+                .say(&ctx.http, format!("```Added \"{}\" to queue```", title));
+        }
+        Err(_) => {
+            let _ = msg
+                .channel_id
+                .say(&ctx.http, format!("```Couldn't play {}```", url));
+        }
     }
 
     Ok(())
@@ -360,9 +379,12 @@ pub fn queue(ctx: &mut Context, msg: &Message) -> CommandResult {
 
     let queue = property.playlist.get_queue();
     let mut output = "```".to_string();
+    if let Some((title, _)) = &property.current_audio {
+        output.push_str(&format!("Playing right now \"{}\"\n\n", title));
+    }
     for title in queue.iter().take(cmp::min(5, queue.len())) {
         output.push_str(title);
-        output.push_str("\n");
+        output.push_str("\n\n");
     }
     output.push_str("```");
     let _ = msg.channel_id.say(&ctx.http, output);

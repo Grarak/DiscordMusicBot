@@ -154,12 +154,16 @@ impl Playlist {
         None
     }
 
-    pub(crate) fn push(&mut self, url: String, channel_id: Option<ChannelId>) -> Result<(), ()> {
+    pub(crate) fn push(
+        &mut self,
+        url: String,
+        channel_id: Option<ChannelId>,
+    ) -> Result<String, ()> {
         let mut regular_queue = self.regular_queue.write();
         match ytdl::get_title(&url) {
             Ok(title) => {
-                regular_queue.push((title, url, channel_id));
-                Ok(())
+                regular_queue.push((title.clone(), url, channel_id));
+                Ok(title)
             }
             Err(_) => Err(()),
         }
