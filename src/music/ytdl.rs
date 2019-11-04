@@ -15,7 +15,7 @@ pub fn get_title(uri: &str) -> Result<String, ()> {
     let output = &mut String::new();
     let _ = youtube_dl.stdout.ok_or(())?.read_to_string(output);
     if !output.is_empty() {
-        Ok(output.to_string())
+        Ok(output.trim().to_string())
     } else {
         Err(())
     }
